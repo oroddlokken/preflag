@@ -49,12 +49,6 @@ echo 'eval "$(preflag --init bash whois:url2hostname ping:url2hostname dig:url2h
 echo 'eval "$(preflag --init zsh whois:url2hostname ping:url2hostname dig:url2hostname)"' >> ~/.zshrc && source ~/.zshrc
 ```
 
-**fish** (`~/.config/fish/config.fish`):
-
-```fish
-echo 'eval "$(preflag --init fish whois:url2hostname ping:url2hostname dig:url2hostname)"' >> ~/.config/fish/config.fish && source ~/.config/fish/config.fish
-```
-
 ### 3. Start using URLs directly
 
 ```bash
@@ -100,12 +94,7 @@ preflag --init zsh ping:url2hostname dig:url2hostname whois:url2hostname
 
 ```bash
 # ~/.bashrc or ~/.zshrc
-eval "$(preflag --init bash ping:url2hostname dig:url2hostname whois:url2hostname)"
-```
-
-```fish
-# ~/.config/fish/config.fish
-preflag --init fish ping:url2hostname dig:url2hostname whois:url2hostname | source
+eval "$(preflag --init zsh ping:url2hostname dig:url2hostname whois:url2hostname)"
 ```
 
 ### List Available Preprocessors
@@ -163,7 +152,7 @@ preflag is designed to work seamlessly with [reflag](https://github.com/kluzzeba
 
 ```bash
 # Single command that sets up both preflag and reflag
-eval "$(preflag --init-with-reflag zsh dig:url2hostname +dig2doggo)"
+eval "$(preflag --init zsh dig:url2hostname +dig2doggo)"
 ```
 
 This creates a complete pipeline:
@@ -231,42 +220,33 @@ See `preprocessor/url2hostname/` for an example implementation.
 
 ## Building from Source
 
-### Using Go
-
 ```bash
+# Using Go
 go install github.com/oroddlokken/preflag@latest
-```
 
-### Build Manually
-
-```bash
+# Or build manually
 git clone https://github.com/oroddlokken/preflag.git
 cd preflag
 make build
 ```
 
-## Usage Examples
+## Advanced Examples
 
-### Basic Preprocessing
+### With reflag Chaining
 
 ```bash
-# Extract hostname from URL
-preflag url2hostname https://example.com/path
-# Output: example.com
+# Complete setup with reflag
+eval "$(preflag --init zsh dig:url2hostname +dig2doggo)"
 
-# Multiple URLs
-preflag url2hostname https://vg.no https://github.com
-# Output: vg.no github.com
-
-# Mixed arguments (flags preserved)
-preflag url2hostname -c 4 https://example.com
-# Output: -c 4 example.com
+# Use modern tools with URLs
+dig https://example.com +short
+# Executes: doggo --short example.com
 ```
 
-### Shell Integration Example
+### Multiple Commands
 
 ```bash
-# Set up for multiple commands
+# Set up multiple commands at once
 eval "$(preflag --init zsh ping:url2hostname dig:url2hostname whois:url2hostname)"
 
 # Now use URLs directly
@@ -275,21 +255,10 @@ dig https://vg.no MX
 whois https://github.com
 ```
 
-### With reflag Chaining
-
-```bash
-# Complete setup with reflag
-eval "$(preflag --init-with-reflag zsh dig:url2hostname +dig2doggo)"
-
-# Use modern tools with URLs and old flags
-dig https://example.com +short
-# Executes: doggo --short example.com
-```
-
 ## License
 
 MIT
 
 ## Inspiration
 
-preflag was inspired by [reflag](https://github.com/kluzzebass/reflag), a tool for translating old command-line flags to modern tool flags.
+preflag was inspired by [reflag](https://github.com/kluzzebass/reflag), a tool for translating old command-line flags to modern tool flags, and goes hand in hand with it.

@@ -47,18 +47,21 @@ func TestParseInitArgs(t *testing.T) {
 		args                []string
 		expectedShell       string
 		expectedCmdPreprocs map[string][]string
+		expectedReflagArgs  []string
 	}{
 		{
 			name:                "no args defaults to bash with no mappings",
 			args:                []string{},
 			expectedShell:       "bash",
 			expectedCmdPreprocs: map[string][]string{},
+			expectedReflagArgs:  []string{},
 		},
 		{
 			name:                "shell only with no mappings",
 			args:                []string{"fish"},
 			expectedShell:       "fish",
 			expectedCmdPreprocs: map[string][]string{},
+			expectedReflagArgs:  []string{},
 		},
 		{
 			name:          "shell with single command:preprocessor",
@@ -67,6 +70,7 @@ func TestParseInitArgs(t *testing.T) {
 			expectedCmdPreprocs: map[string][]string{
 				"ping": {"url2hostname"},
 			},
+			expectedReflagArgs: []string{},
 		},
 		{
 			name:          "shell with multiple preprocessors for one command",
@@ -75,6 +79,7 @@ func TestParseInitArgs(t *testing.T) {
 			expectedCmdPreprocs: map[string][]string{
 				"ping": {"url2hostname", "preprocessor2"},
 			},
+			expectedReflagArgs: []string{},
 		},
 		{
 			name:          "multiple command:preprocessor mappings",
@@ -84,6 +89,7 @@ func TestParseInitArgs(t *testing.T) {
 				"ping":  {"url2hostname"},
 				"whois": {"url2hostname"},
 			},
+			expectedReflagArgs: []string{},
 		},
 		{
 			name:          "command:preprocessor without shell",
@@ -92,12 +98,13 @@ func TestParseInitArgs(t *testing.T) {
 			expectedCmdPreprocs: map[string][]string{
 				"ping": {"url2hostname"},
 			},
+			expectedReflagArgs: []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shell, cmdPreprocs := parseInitArgs(tt.args)
+			shell, cmdPreprocs, reflagArgs := parseInitArgs(tt.args)
 			if shell != tt.expectedShell {
 				t.Errorf("parseInitArgs(%v) shell = %q, want %q", tt.args, shell, tt.expectedShell)
 			}
@@ -110,6 +117,9 @@ func TestParseInitArgs(t *testing.T) {
 				} else if !slices.Equal(gotPreprocs, expectedPreprocs) {
 					t.Errorf("parseInitArgs(%v) command %q: got %v, want %v", tt.args, cmd, gotPreprocs, expectedPreprocs)
 				}
+			}
+			if !slices.Equal(reflagArgs, tt.expectedReflagArgs) {
+				t.Errorf("parseInitArgs(%v) reflag args = %v, want %v", tt.args, reflagArgs, tt.expectedReflagArgs)
 			}
 		})
 	}
@@ -133,7 +143,7 @@ func TestPreprocessorRegistry(t *testing.T) {
 	}
 }
 
-func TestParseWithReflagInitArgs(t *testing.T) {
+func TestParseInitArgsWithReflag(t *testing.T) {
 	tests := []struct {
 		name                string
 		args                []string
@@ -166,13 +176,13 @@ func TestParseWithReflagInitArgs(t *testing.T) {
 		},
 		{
 			name:          "multiple preflag mappings with multiple reflag args",
-			args:          []string{"bash", "dig:url2hostname", "grep:url2hostname", "+dig2doggo", "+grep2rg", "-ls2eza"},
+			args:          []string{"bash", "dig:url2hostname", "grep:url2hostname", "+dig2doggo", "+grep2rg"},
 			expectedShell: "bash",
 			expectedCmdPreprocs: map[string][]string{
 				"dig":  {"url2hostname"},
 				"grep": {"url2hostname"},
 			},
-			expectedReflagArgs: []string{"+dig2doggo", "+grep2rg", "-ls2eza"},
+			expectedReflagArgs: []string{"+dig2doggo", "+grep2rg"},
 		},
 		{
 			name:          "preflag mapping with multiple preprocessors",
@@ -194,20 +204,20 @@ func TestParseWithReflagInitArgs(t *testing.T) {
 		},
 		{
 			name:          "mixed order of preflag and reflag args",
-			args:          []string{"zsh", "+dig2doggo", "dig:url2hostname", "-ls2eza", "grep:url2hostname", "+grep2rg"},
+			args:          []string{"zsh", "+dig2doggo", "dig:url2hostname", "grep:url2hostname", "+grep2rg"},
 			expectedShell: "zsh",
 			expectedCmdPreprocs: map[string][]string{
 				"dig":  {"url2hostname"},
 				"grep": {"url2hostname"},
 			},
-			expectedReflagArgs: []string{"+dig2doggo", "-ls2eza", "+grep2rg"},
+			expectedReflagArgs: []string{"+dig2doggo", "+grep2rg"},
 		},
 		{
 			name:                "only reflag args no preflag mappings",
-			args:                []string{"bash", "+dig2doggo", "-ls2eza"},
+			args:                []string{"bash", "+dig2doggo", "+ls2eza"},
 			expectedShell:       "bash",
 			expectedCmdPreprocs: map[string][]string{},
-			expectedReflagArgs:  []string{"+dig2doggo", "-ls2eza"},
+			expectedReflagArgs:  []string{"+dig2doggo", "+ls2eza"},
 		},
 		{
 			name:          "only preflag mappings no reflag args",
@@ -223,32 +233,32 @@ func TestParseWithReflagInitArgs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shell, cmdPreprocs, reflagArgs := parseWithReflagInitArgs(tt.args)
+			shell, cmdPreprocs, reflagArgs := parseInitArgs(tt.args)
 
 			if shell != tt.expectedShell {
-				t.Errorf("parseWithReflagInitArgs(%v) shell = %q, want %q", tt.args, shell, tt.expectedShell)
+				t.Errorf("parseInitArgs(%v) shell = %q, want %q", tt.args, shell, tt.expectedShell)
 			}
 
 			if len(cmdPreprocs) != len(tt.expectedCmdPreprocs) {
-				t.Errorf("parseWithReflagInitArgs(%v) got %d preflag mappings, want %d", tt.args, len(cmdPreprocs), len(tt.expectedCmdPreprocs))
+				t.Errorf("parseInitArgs(%v) got %d preflag mappings, want %d", tt.args, len(cmdPreprocs), len(tt.expectedCmdPreprocs))
 			}
 
 			for cmd, expectedPreprocs := range tt.expectedCmdPreprocs {
 				if gotPreprocs, ok := cmdPreprocs[cmd]; !ok {
-					t.Errorf("parseWithReflagInitArgs(%v) missing command %q", tt.args, cmd)
+					t.Errorf("parseInitArgs(%v) missing command %q", tt.args, cmd)
 				} else if !slices.Equal(gotPreprocs, expectedPreprocs) {
-					t.Errorf("parseWithReflagInitArgs(%v) command %q: got %v, want %v", tt.args, cmd, gotPreprocs, expectedPreprocs)
+					t.Errorf("parseInitArgs(%v) command %q: got %v, want %v", tt.args, cmd, gotPreprocs, expectedPreprocs)
 				}
 			}
 
 			if !slices.Equal(reflagArgs, tt.expectedReflagArgs) {
-				t.Errorf("parseWithReflagInitArgs(%v) reflag args = %v, want %v", tt.args, reflagArgs, tt.expectedReflagArgs)
+				t.Errorf("parseInitArgs(%v) reflag args = %v, want %v", tt.args, reflagArgs, tt.expectedReflagArgs)
 			}
 		})
 	}
 }
 
-func TestPrintWithReflagInit(t *testing.T) {
+func TestPrintInit(t *testing.T) {
 	tests := []struct {
 		name             string
 		shell            string
@@ -299,7 +309,7 @@ func TestPrintWithReflagInit(t *testing.T) {
 				"dig":  {"url2hostname"},
 				"grep": {"url2hostname"},
 			},
-			reflagArgs: []string{"+dig2doggo", "+grep2rg", "-ls2eza"},
+			reflagArgs: []string{"+dig2doggo", "+grep2rg", "+ls2eza"},
 			expectedStrings: []string{
 				"__preflag_orig_dig() { command dig \"$@\"; }",
 				"__preflag_dig_impl() {",
@@ -307,7 +317,7 @@ func TestPrintWithReflagInit(t *testing.T) {
 				"__preflag_orig_grep() { command grep \"$@\"; }",
 				"__preflag_grep_impl() {",
 				"args=$(preflag url2hostname \"$@\")",
-				"eval \"$(reflag --init bash +dig2doggo +grep2rg -ls2eza)\"",
+				"eval \"$(reflag --init bash +dig2doggo +grep2rg +ls2eza)\"",
 				"__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
 				"__preflag_grep_next() { eval \"$(reflag grep rg \"$@\")\"; }",
 				"dig() { __preflag_dig_impl \"$@\"; }",
@@ -331,10 +341,10 @@ func TestPrintWithReflagInit(t *testing.T) {
 			cmdPreprocessors: CommandPreprocessors{
 				"ping": {"url2hostname"},
 			},
-			reflagArgs: []string{"+dig2doggo", "-ls2eza"},
+			reflagArgs: []string{"+dig2doggo", "+ls2eza"},
 			expectedStrings: []string{
 				"__preflag_orig_ping() { command ping \"$@\"; }",
-				"eval \"$(reflag --init bash +dig2doggo -ls2eza)\"",
+				"eval \"$(reflag --init bash +dig2doggo +ls2eza)\"",
 			},
 			notExpected: []string{
 				"__preflag_ping_next()",
@@ -348,7 +358,7 @@ func TestPrintWithReflagInit(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			printWithReflagInit(tt.shell, tt.cmdPreprocessors, tt.reflagArgs)
+			printInit(tt.shell, tt.cmdPreprocessors, tt.reflagArgs)
 
 			w.Close()
 			os.Stdout = old
@@ -359,20 +369,20 @@ func TestPrintWithReflagInit(t *testing.T) {
 
 			for _, expected := range tt.expectedStrings {
 				if !strings.Contains(output, expected) {
-					t.Errorf("printWithReflagInit() output missing expected string:\n%q\nGot output:\n%s", expected, output)
+					t.Errorf("printInit() output missing expected string:\n%q\nGot output:\n%s", expected, output)
 				}
 			}
 
 			for _, notExp := range tt.notExpected {
 				if strings.Contains(output, notExp) {
-					t.Errorf("printWithReflagInit() output contains unexpected string:\n%q\nGot output:\n%s", notExp, output)
+					t.Errorf("printInit() output contains unexpected string:\n%q\nGot output:\n%s", notExp, output)
 				}
 			}
 		})
 	}
 }
 
-func TestPrintWithReflagInitTargetCommandExtraction(t *testing.T) {
+func TestPrintInitTargetCommandExtraction(t *testing.T) {
 	tests := []struct {
 		name             string
 		cmdPreprocessors CommandPreprocessors
@@ -427,7 +437,7 @@ func TestPrintWithReflagInitTargetCommandExtraction(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			printWithReflagInit("bash", tt.cmdPreprocessors, tt.reflagArgs)
+			printInit("bash", tt.cmdPreprocessors, tt.reflagArgs)
 
 			w.Close()
 			os.Stdout = old
@@ -437,13 +447,13 @@ func TestPrintWithReflagInitTargetCommandExtraction(t *testing.T) {
 			output := buf.String()
 
 			if !strings.Contains(output, tt.expectedNextFunc) {
-				t.Errorf("printWithReflagInit() output missing expected next function:\n%q\nGot output:\n%s", tt.expectedNextFunc, output)
+				t.Errorf("printInit() output missing expected next function:\n%q\nGot output:\n%s", tt.expectedNextFunc, output)
 			}
 		})
 	}
 }
 
-func TestPrintWithReflagInitOutputStructure(t *testing.T) {
+func TestPrintInitOutputStructure(t *testing.T) {
 	cmdPreprocessors := CommandPreprocessors{
 		"dig": {"url2hostname"},
 	}
@@ -453,7 +463,7 @@ func TestPrintWithReflagInitOutputStructure(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printWithReflagInit("bash", cmdPreprocessors, reflagArgs)
+	printInit("bash", cmdPreprocessors, reflagArgs)
 
 	w.Close()
 	os.Stdout = old
@@ -471,7 +481,7 @@ func TestPrintWithReflagInitOutputStructure(t *testing.T) {
 
 	for _, section := range requiredSections {
 		if !strings.Contains(output, section) {
-			t.Errorf("printWithReflagInit() output missing required section: %q", section)
+			t.Errorf("printInit() output missing required section: %q", section)
 		}
 	}
 
@@ -489,7 +499,7 @@ func TestPrintWithReflagInitOutputStructure(t *testing.T) {
 	}
 }
 
-func TestParseWithReflagInitArgsEdgeCases(t *testing.T) {
+func TestParseInitArgsEdgeCases(t *testing.T) {
 	tests := []struct {
 		name                string
 		args                []string
@@ -523,11 +533,11 @@ func TestParseWithReflagInitArgsEdgeCases(t *testing.T) {
 			expectedReflagArgs:  []string{"+"},
 		},
 		{
-			name:                "minus sign without translator name",
+			name:                "minus sign without translator name is ignored",
 			args:                []string{"-"},
 			expectedShell:       "bash",
 			expectedCmdPreprocs: map[string][]string{},
-			expectedReflagArgs:  []string{"-"},
+			expectedReflagArgs:  []string{},
 		},
 		{
 			name:          "empty preprocessor list after colon",
@@ -542,32 +552,32 @@ func TestParseWithReflagInitArgsEdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shell, cmdPreprocs, reflagArgs := parseWithReflagInitArgs(tt.args)
+			shell, cmdPreprocs, reflagArgs := parseInitArgs(tt.args)
 
 			if shell != tt.expectedShell {
-				t.Errorf("parseWithReflagInitArgs(%v) shell = %q, want %q", tt.args, shell, tt.expectedShell)
+				t.Errorf("parseInitArgs(%v) shell = %q, want %q", tt.args, shell, tt.expectedShell)
 			}
 
 			if len(cmdPreprocs) != len(tt.expectedCmdPreprocs) {
-				t.Errorf("parseWithReflagInitArgs(%v) got %d preflag mappings, want %d", tt.args, len(cmdPreprocs), len(tt.expectedCmdPreprocs))
+				t.Errorf("parseInitArgs(%v) got %d preflag mappings, want %d", tt.args, len(cmdPreprocs), len(tt.expectedCmdPreprocs))
 			}
 
 			for cmd, expectedPreprocs := range tt.expectedCmdPreprocs {
 				if gotPreprocs, ok := cmdPreprocs[cmd]; !ok {
-					t.Errorf("parseWithReflagInitArgs(%v) missing command %q", tt.args, cmd)
+					t.Errorf("parseInitArgs(%v) missing command %q", tt.args, cmd)
 				} else if !slices.Equal(gotPreprocs, expectedPreprocs) {
-					t.Errorf("parseWithReflagInitArgs(%v) command %q: got %v, want %v", tt.args, cmd, gotPreprocs, expectedPreprocs)
+					t.Errorf("parseInitArgs(%v) command %q: got %v, want %v", tt.args, cmd, gotPreprocs, expectedPreprocs)
 				}
 			}
 
 			if !slices.Equal(reflagArgs, tt.expectedReflagArgs) {
-				t.Errorf("parseWithReflagInitArgs(%v) reflag args = %v, want %v", tt.args, reflagArgs, tt.expectedReflagArgs)
+				t.Errorf("parseInitArgs(%v) reflag args = %v, want %v", tt.args, reflagArgs, tt.expectedReflagArgs)
 			}
 		})
 	}
 }
 
-func TestPrintWithReflagInitComplexScenarios(t *testing.T) {
+func TestPrintInitComplexScenarios(t *testing.T) {
 	tests := []struct {
 		name             string
 		shell            string
@@ -584,14 +594,14 @@ func TestPrintWithReflagInitComplexScenarios(t *testing.T) {
 				"grep": {"url2hostname"},
 				"ls":   {"url2hostname"},
 			},
-			reflagArgs: []string{"+dig2doggo", "+grep2rg", "-du2dust"},
+			reflagArgs: []string{"+dig2doggo", "+grep2rg", "+du2dust"},
 			mustContain: []string{
 				"__preflag_orig_dig()",
 				"__preflag_orig_grep()",
 				"__preflag_orig_ls()",
 				"__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
 				"__preflag_grep_next() { eval \"$(reflag grep rg \"$@\")\"; }",
-				"eval \"$(reflag --init bash +dig2doggo +grep2rg -du2dust)\"",
+				"eval \"$(reflag --init bash +dig2doggo +grep2rg +du2dust)\"",
 			},
 			mustNotContain: []string{
 				"__preflag_ls_next()",
@@ -634,7 +644,7 @@ func TestPrintWithReflagInitComplexScenarios(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			printWithReflagInit(tt.shell, tt.cmdPreprocessors, tt.reflagArgs)
+			printInit(tt.shell, tt.cmdPreprocessors, tt.reflagArgs)
 
 			w.Close()
 			os.Stdout = old
@@ -658,7 +668,7 @@ func TestPrintWithReflagInitComplexScenarios(t *testing.T) {
 	}
 }
 
-func TestPrintWithReflagInitCommandSorting(t *testing.T) {
+func TestPrintInitCommandSorting(t *testing.T) {
 	cmdPreprocessors := CommandPreprocessors{
 		"zsh":  {"url2hostname"},
 		"dig":  {"url2hostname"},
@@ -671,7 +681,7 @@ func TestPrintWithReflagInitCommandSorting(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printWithReflagInit("bash", cmdPreprocessors, reflagArgs)
+	printInit("bash", cmdPreprocessors, reflagArgs)
 
 	w.Close()
 	os.Stdout = old

@@ -166,20 +166,9 @@ func TestPreprocessorMetadata(t *testing.T) {
 }
 ```
 
-### 4. Import in Main
+### 4. Import in Main and Tests
 
-Add the import to `main.go` (blank import for side-effects):
-
-```go
-import (
- // ... existing imports
- _ "github.com/oroddlokken/preflag/preprocessor/yourpreprocessor"
-)
-```
-
-### 5. Import in Tests
-
-Add the import to `main_test.go`:
+Add the import to `main.go` and `main_test.go` (blank import for side-effects):
 
 ```go
 import (
@@ -188,7 +177,7 @@ import (
 )
 ```
 
-### 6. Run Tests
+### 5. Run Tests
 
 ```bash
 # Test your preprocessor
@@ -198,7 +187,7 @@ go test ./preprocessor/yourpreprocessor/...
 go test ./...
 ```
 
-### 7. Build and Verify
+### 6. Build and Verify
 
 ```bash
 # Build
@@ -227,7 +216,7 @@ The `url2hostname` preprocessor extracts hostnames from URLs:
 
 **File structure:**
 
-```
+```text
 preprocessor/url2hostname/
 ├── preprocessor.go       # Implementation
 └── preprocessor_test.go  # Tests
@@ -333,9 +322,10 @@ If your preprocessor needs external packages:
 Adding a preprocessor requires:
 
 1. Create directory: `preprocessor/yourpreprocessor/`
-2. Implement interface with `init()` registration
+2. Implement the `Preprocessor` interface with `init()` registration
 3. Write comprehensive tests
 4. Import in `main.go` and `main_test.go`
-5. Build and verify with `--list`
+5. Run tests to verify
+6. Build and verify with `--list`
 
 The registry pattern ensures your preprocessor is automatically discovered and available to users without modifying core code.
