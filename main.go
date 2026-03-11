@@ -80,7 +80,7 @@ func parseInitArgs(args []string) (shell string, cmdPreprocessors CommandPreproc
 
 	startIdx := 0
 	// First arg could be shell
-	if args[0] == "bash" || args[0] == "zsh" {
+	if args[0] == "bash" || args[0] == "zsh" || args[0] == "fish" {
 		shell = args[0]
 		startIdx = 1
 	}
@@ -126,49 +126,11 @@ func printInit(shell string, cmdPreprocessors CommandPreprocessors, reflagArgs [
 	}
 	sort.Strings(commands)
 
-	// Handle reflag-only case (no preflag mappings)
+	// Handle reflag-only case: use reflag --init directly instead
 	if len(cmdPreprocessors) == 0 && len(reflagArgs) > 0 {
-		// Extract command names from +translator args (e.g., +cat2bat -> cat)
-		reflagCommands := make(map[string]string) // cmd -> target
-		for _, arg := range reflagArgs {
-			if strings.HasPrefix(arg, "+") {
-				translatorName := strings.TrimPrefix(arg, "+")
-				// Parse cmd2target pattern
-				if strings.Contains(translatorName, "2") {
-					parts := strings.SplitN(translatorName, "2", 2)
-					if len(parts) == 2 {
-						reflagCommands[parts[0]] = parts[1]
-					}
-				}
-			}
-		}
-
-		// Sort commands for consistent output
-		var reflagCmds []string
-		for cmd := range reflagCommands {
-			reflagCmds = append(reflagCmds, cmd)
-		}
-		sort.Strings(reflagCmds)
-
-		// Generate reflag-style shell functions
-		switch shell {
-		case "fish":
-			for _, cmd := range reflagCmds {
-				target := reflagCommands[cmd]
-				fmt.Printf("function %s --wraps=%s\n", cmd, target)
-				fmt.Printf("    eval \"$(reflag %s %s $argv)\"\n", cmd, target)
-				fmt.Printf("end\n")
-			}
-		default: // bash, zsh
-			for _, cmd := range reflagCmds {
-				target := reflagCommands[cmd]
-				fmt.Printf("unalias %s 2>/dev/null\n", cmd)
-				fmt.Printf("%s() {\n", cmd)
-				fmt.Printf("    eval \"$(reflag %s %s \"$@\")\"\n", cmd, target)
-				fmt.Printf("}\n")
-			}
-		}
-		return
+		fmt.Fprintln(os.Stderr, "preflag --init: reflag-only commands should use 'reflag --init' directly")
+		fmt.Fprintln(os.Stderr, "Example: eval \"$(reflag --init zsh)\"")
+		os.Exit(1)
 	}
 
 	// Handle preflag-only case (no reflag args)
@@ -203,42 +165,15 @@ func printInit(shell string, cmdPreprocessors CommandPreprocessors, reflagArgs [
 	// Handle combined preflag+reflag case
 	switch shell {
 	default: // bash, zsh
-		fmt.Println("# preflag + reflag chaining setup")
-		fmt.Println()
-
-		// Step 1: Initialize preflag
-		fmt.Println("# Step 1: Initialize preflag")
 		for _, cmd := range commands {
 			preprocessors := cmdPreprocessors[cmd]
 			preprocessorStr := strings.Join(preprocessors, ",")
-			fmt.Printf("__preflag_orig_%s() { command %s \"$@\"; }\n", cmd, cmd)
-			fmt.Printf("__preflag_%s_impl() {\n", cmd)
-			fmt.Printf("    local args\n")
-			fmt.Printf("    args=$(preflag %s \"$@\")\n", preprocessorStr)
-			fmt.Printf("    if declare -f __preflag_%s_next >/dev/null 2>&1; then\n", cmd)
-			fmt.Printf("        eval \"__preflag_%s_next $args\"\n", cmd)
-			fmt.Printf("    else\n")
-			fmt.Printf("        eval \"__preflag_orig_%s $args\"\n", cmd)
-			fmt.Printf("    fi\n")
-			fmt.Printf("}\n")
-			fmt.Printf("%s() { __preflag_%s_impl \"$@\"; }\n\n", cmd, cmd)
-		}
 
-		// Step 2: Initialize reflag (this will overwrite the command functions)
-		fmt.Println("# Step 2: Initialize reflag (overwrites command functions)")
-		reflagArgsStr := strings.Join(reflagArgs, " ")
-		fmt.Printf("eval \"$(reflag --init %s %s)\"\n\n", shell, reflagArgsStr)
-
-		// Step 3: Create next functions to capture reflag's logic
-		fmt.Println("# Step 3: Create next functions to capture reflag's logic")
-		for _, cmd := range commands {
-			// Extract target command from reflag args
-			// Look for +cmd2target pattern
+			// Extract target command from reflag args for this command
 			targetCmd := ""
 			for _, arg := range reflagArgs {
 				if strings.HasPrefix(arg, "+") {
 					translatorName := strings.TrimPrefix(arg, "+")
-					// Check if this translator starts with our command
 					if strings.HasPrefix(translatorName, cmd+"2") {
 						parts := strings.SplitN(translatorName, "2", 2)
 						if len(parts) == 2 {
@@ -249,16 +184,23 @@ func printInit(shell string, cmdPreprocessors CommandPreprocessors, reflagArgs [
 				}
 			}
 
-			if targetCmd != "" {
-				fmt.Printf("__preflag_%s_next() { eval \"$(reflag %s %s \"$@\")\"; }\n", cmd, cmd, targetCmd)
-			}
-		}
-		fmt.Println()
+			fmt.Printf("__preflag_orig_%s() { command %s \"$@\"; }\n", cmd, cmd)
 
-		// Step 4: Restore preflag wrappers
-		fmt.Println("# Step 4: Restore preflag wrappers")
-		for _, cmd := range commands {
-			fmt.Printf("%s() { __preflag_%s_impl \"$@\"; }\n", cmd, cmd)
+			if targetCmd != "" {
+				// Chain: preprocess args, then translate via reflag
+				fmt.Printf("%s() {\n", cmd)
+				fmt.Printf("    local args\n")
+				fmt.Printf("    args=$(preflag %s \"$@\")\n", preprocessorStr)
+				fmt.Printf("    eval \"$(reflag %s %s $args)\"\n", cmd, targetCmd)
+				fmt.Printf("}\n")
+			} else {
+				// Preprocess only, call original command
+				fmt.Printf("%s() {\n", cmd)
+				fmt.Printf("    local args\n")
+				fmt.Printf("    args=$(preflag %s \"$@\")\n", preprocessorStr)
+				fmt.Printf("    eval \"__preflag_orig_%s $args\"\n", cmd)
+				fmt.Printf("}\n")
+			}
 		}
 	}
 }
@@ -272,7 +214,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  preflag --init [shell] [command:preprocessor...] [+translator...]")
 	fmt.Println("      Generate shell aliases/functions for commands")
-	fmt.Println("      shell: bash (default), zsh")
+	fmt.Println("      shell: bash (default), zsh, fish")
 	fmt.Println("      command:preprocessor: preflag mappings (contains ':')")
 	fmt.Println("      +translator: reflag translators (starts with '+')")
 	fmt.Println()
@@ -293,9 +235,6 @@ func printUsage() {
 	fmt.Println("Examples:")
 	fmt.Println("  preflag --init zsh nslookup:url2hostname")
 	fmt.Println("      → Creates nslookup() function with url2hostname preprocessor")
-	fmt.Println()
-	fmt.Println("  preflag --init zsh +cat2bat +df2duf")
-	fmt.Println("      → Creates cat() and df() functions using reflag translators")
 	fmt.Println()
 	fmt.Println("  preflag --init zsh dig:url2hostname +dig2doggo")
 	fmt.Println("      → Creates dig() function with chained preflag+reflag: URL → hostname → doggo")

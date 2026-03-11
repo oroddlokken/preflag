@@ -268,60 +268,34 @@ func TestPrintInit(t *testing.T) {
 		notExpected      []string
 	}{
 		{
-			name:  "single command with single reflag translator bash",
+			name:  "combined preflag+reflag chains preprocessing and translation",
 			shell: "bash",
 			cmdPreprocessors: CommandPreprocessors{
 				"dig": {"url2hostname"},
 			},
 			reflagArgs: []string{"+dig2doggo"},
 			expectedStrings: []string{
-				"# preflag + reflag chaining setup",
-				"# Step 1: Initialize preflag",
 				"__preflag_orig_dig() { command dig \"$@\"; }",
-				"__preflag_dig_impl() {",
 				"args=$(preflag url2hostname \"$@\")",
-				"if declare -f __preflag_dig_next >/dev/null 2>&1; then",
-				"eval \"__preflag_dig_next $args\"",
-				"eval \"__preflag_orig_dig $args\"",
-				"dig() { __preflag_dig_impl \"$@\"; }",
-				"# Step 2: Initialize reflag (overwrites command functions)",
-				"eval \"$(reflag --init bash +dig2doggo)\"",
-				"# Step 3: Create next functions to capture reflag's logic",
-				"__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
-				"# Step 4: Restore preflag wrappers",
+				"eval \"$(reflag dig doggo $args)\"",
+			},
+			notExpected: []string{
+				"reflag --init",
 			},
 		},
 		{
-			name:  "single command with single reflag translator zsh",
-			shell: "zsh",
-			cmdPreprocessors: CommandPreprocessors{
-				"dig": {"url2hostname"},
-			},
-			reflagArgs: []string{"+dig2doggo"},
-			expectedStrings: []string{
-				"eval \"$(reflag --init zsh +dig2doggo)\"",
-			},
-		},
-		{
-			name:  "multiple commands with multiple reflag translators",
+			name:  "multiple commands with matching and non-matching reflag args",
 			shell: "bash",
 			cmdPreprocessors: CommandPreprocessors{
 				"dig":  {"url2hostname"},
 				"grep": {"url2hostname"},
 			},
-			reflagArgs: []string{"+dig2doggo", "+grep2rg", "+ls2eza"},
+			reflagArgs: []string{"+dig2doggo", "+grep2rg"},
 			expectedStrings: []string{
 				"__preflag_orig_dig() { command dig \"$@\"; }",
-				"__preflag_dig_impl() {",
-				"args=$(preflag url2hostname \"$@\")",
 				"__preflag_orig_grep() { command grep \"$@\"; }",
-				"__preflag_grep_impl() {",
-				"args=$(preflag url2hostname \"$@\")",
-				"eval \"$(reflag --init bash +dig2doggo +grep2rg +ls2eza)\"",
-				"__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
-				"__preflag_grep_next() { eval \"$(reflag grep rg \"$@\")\"; }",
-				"dig() { __preflag_dig_impl \"$@\"; }",
-				"grep() { __preflag_grep_impl \"$@\"; }",
+				"eval \"$(reflag dig doggo $args)\"",
+				"eval \"$(reflag grep rg $args)\"",
 			},
 		},
 		{
@@ -336,18 +310,18 @@ func TestPrintInit(t *testing.T) {
 			},
 		},
 		{
-			name:  "only reflag args no matching preflag commands",
+			name:  "no matching reflag translator falls back to original command",
 			shell: "bash",
 			cmdPreprocessors: CommandPreprocessors{
 				"ping": {"url2hostname"},
 			},
-			reflagArgs: []string{"+dig2doggo", "+ls2eza"},
+			reflagArgs: []string{"+dig2doggo"},
 			expectedStrings: []string{
 				"__preflag_orig_ping() { command ping \"$@\"; }",
-				"eval \"$(reflag --init bash +dig2doggo +ls2eza)\"",
+				"eval \"__preflag_orig_ping $args\"",
 			},
 			notExpected: []string{
-				"__preflag_ping_next()",
+				"reflag ping",
 			},
 		},
 	}
@@ -384,50 +358,28 @@ func TestPrintInit(t *testing.T) {
 
 func TestPrintInitTargetCommandExtraction(t *testing.T) {
 	tests := []struct {
-		name             string
+		name           string
 		cmdPreprocessors CommandPreprocessors
-		reflagArgs       []string
-		expectedNextFunc string
+		reflagArgs     []string
+		expectedReflag string
 	}{
 		{
-			name: "dig2doggo extracts doggo as target",
-			cmdPreprocessors: CommandPreprocessors{
-				"dig": {"url2hostname"},
-			},
+			name:             "dig2doggo extracts doggo as target",
+			cmdPreprocessors: CommandPreprocessors{"dig": {"url2hostname"}},
 			reflagArgs:       []string{"+dig2doggo"},
-			expectedNextFunc: "__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
+			expectedReflag:   "eval \"$(reflag dig doggo $args)\"",
 		},
 		{
-			name: "grep2rg extracts rg as target",
-			cmdPreprocessors: CommandPreprocessors{
-				"grep": {"url2hostname"},
-			},
+			name:             "grep2rg extracts rg as target",
+			cmdPreprocessors: CommandPreprocessors{"grep": {"url2hostname"}},
 			reflagArgs:       []string{"+grep2rg"},
-			expectedNextFunc: "__preflag_grep_next() { eval \"$(reflag grep rg \"$@\")\"; }",
+			expectedReflag:   "eval \"$(reflag grep rg $args)\"",
 		},
 		{
-			name: "ls2eza extracts eza as target",
-			cmdPreprocessors: CommandPreprocessors{
-				"ls": {"url2hostname"},
-			},
-			reflagArgs:       []string{"+ls2eza"},
-			expectedNextFunc: "__preflag_ls_next() { eval \"$(reflag ls eza \"$@\")\"; }",
-		},
-		{
-			name: "du2dust extracts dust as target",
-			cmdPreprocessors: CommandPreprocessors{
-				"du": {"url2hostname"},
-			},
-			reflagArgs:       []string{"+du2dust"},
-			expectedNextFunc: "__preflag_du_next() { eval \"$(reflag du dust \"$@\")\"; }",
-		},
-		{
-			name: "find2fd extracts fd as target",
-			cmdPreprocessors: CommandPreprocessors{
-				"find": {"url2hostname"},
-			},
+			name:             "find2fd extracts fd as target",
+			cmdPreprocessors: CommandPreprocessors{"find": {"url2hostname"}},
 			reflagArgs:       []string{"+find2fd"},
-			expectedNextFunc: "__preflag_find_next() { eval \"$(reflag find fd \"$@\")\"; }",
+			expectedReflag:   "eval \"$(reflag find fd $args)\"",
 		},
 	}
 
@@ -446,56 +398,10 @@ func TestPrintInitTargetCommandExtraction(t *testing.T) {
 			io.Copy(&buf, r)
 			output := buf.String()
 
-			if !strings.Contains(output, tt.expectedNextFunc) {
-				t.Errorf("printInit() output missing expected next function:\n%q\nGot output:\n%s", tt.expectedNextFunc, output)
+			if !strings.Contains(output, tt.expectedReflag) {
+				t.Errorf("printInit() output missing expected reflag call:\n%q\nGot output:\n%s", tt.expectedReflag, output)
 			}
 		})
-	}
-}
-
-func TestPrintInitOutputStructure(t *testing.T) {
-	cmdPreprocessors := CommandPreprocessors{
-		"dig": {"url2hostname"},
-	}
-	reflagArgs := []string{"+dig2doggo"}
-
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printInit("bash", cmdPreprocessors, reflagArgs)
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
-
-	requiredSections := []string{
-		"# Step 1: Initialize preflag",
-		"# Step 2: Initialize reflag (overwrites command functions)",
-		"# Step 3: Create next functions to capture reflag's logic",
-		"# Step 4: Restore preflag wrappers",
-	}
-
-	for _, section := range requiredSections {
-		if !strings.Contains(output, section) {
-			t.Errorf("printInit() output missing required section: %q", section)
-		}
-	}
-
-	step1Idx := strings.Index(output, "# Step 1:")
-	step2Idx := strings.Index(output, "# Step 2:")
-	step3Idx := strings.Index(output, "# Step 3:")
-	step4Idx := strings.Index(output, "# Step 4:")
-
-	if step1Idx == -1 || step2Idx == -1 || step3Idx == -1 || step4Idx == -1 {
-		t.Fatal("Not all steps found in output")
-	}
-
-	if !(step1Idx < step2Idx && step2Idx < step3Idx && step3Idx < step4Idx) {
-		t.Error("Steps are not in correct order")
 	}
 }
 
@@ -599,12 +505,12 @@ func TestPrintInitComplexScenarios(t *testing.T) {
 				"__preflag_orig_dig()",
 				"__preflag_orig_grep()",
 				"__preflag_orig_ls()",
-				"__preflag_dig_next() { eval \"$(reflag dig doggo \"$@\")\"; }",
-				"__preflag_grep_next() { eval \"$(reflag grep rg \"$@\")\"; }",
-				"eval \"$(reflag --init bash +dig2doggo +grep2rg +du2dust)\"",
+				"eval \"$(reflag dig doggo $args)\"",
+				"eval \"$(reflag grep rg $args)\"",
 			},
 			mustNotContain: []string{
-				"__preflag_ls_next()",
+				"reflag --init",
+				"reflag ls",
 			},
 		},
 		{
@@ -619,7 +525,7 @@ func TestPrintInitComplexScenarios(t *testing.T) {
 			},
 		},
 		{
-			name:  "reflag args with no matching commands creates no next functions",
+			name:  "no matching reflag translator uses original command",
 			shell: "bash",
 			cmdPreprocessors: CommandPreprocessors{
 				"ping": {"url2hostname"},
@@ -629,11 +535,12 @@ func TestPrintInitComplexScenarios(t *testing.T) {
 			mustContain: []string{
 				"__preflag_orig_ping()",
 				"__preflag_orig_ssh()",
-				"eval \"$(reflag --init bash +dig2doggo +grep2rg)\"",
+				"eval \"__preflag_orig_ping $args\"",
+				"eval \"__preflag_orig_ssh $args\"",
 			},
 			mustNotContain: []string{
-				"__preflag_ping_next()",
-				"__preflag_ssh_next()",
+				"reflag ping",
+				"reflag ssh",
 			},
 		},
 	}
