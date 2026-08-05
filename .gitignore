@@ -1,2 +1,4 @@
 /preflag
 dist/
+.dogcats/config.local.toml
+.dogcats/.issues.lock
